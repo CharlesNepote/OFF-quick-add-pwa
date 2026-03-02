@@ -1,8 +1,8 @@
 # OFF-quick-add-pwa
-Web mobile app to quickly adding data to Open Food Facts
+Web mobile app to quickly add data to Open Food Facts
 
 Usage:
-* enter account and password
+* enter username and password
 * select a country
 * optionally select a category (you have to type 4 letters and wait for off categories to be displayed)
 
