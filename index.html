@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#0d0d14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>OFF Scanner</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #0d0d14;
+    --surface: #16161f;
+    --border:  #2a2a3d;
+    --accent:  #7cfc5e;
+    --accent2: #5e9cfc;
+    --text:    #e8e8f0;
+    --muted:   #6b6b80;
+    --danger:  #fc5e5e;
+    --warn:    #fcb25e;
+  }
+
+  body {
+    font-family: 'DM Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 0.35rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  header h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  header span {
+    font-size: 0.6rem;
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ── Config panel ── */
+  .config {
+    padding: 0.55rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .config-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+  }
+
+  label {
+    font-size: 0.58rem;
+    color: var(--muted);
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 0.18rem;
+  }
+
+  select, input[type="text"], input[type="password"] {
+    width: 100%;
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 0.4rem 0.55rem;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.78rem;
+  }
+
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b6b80'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.55rem center;
+    cursor: pointer;
+  }
+
+  select:focus, input:focus { outline: none; border-color: var(--accent2); }
+  input::placeholder { color: var(--muted); }
+
+  /* ── Scanner area ── */
+  .scanner-wrap {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+  }
+
+  #reader { width: 100%; max-width: 480px; }
+
+  /* Hide html5-qrcode's own control dashboard — we manage start/stop ourselves */
+  #reader__dashboard { display: none !important; }
+  #reader video { border-radius: 0 !important; }
+
+  /* ── Success flash overlay ── */
+  /* Covers the entire scanner area with a green flash on successful scan */
+  #flash {
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 30;
+  }
+
+  #flash.active {
+    animation: flash-in 0.5s ease-out forwards;
+  }
+
+  @keyframes flash-in {
+    0%   { opacity: 0.55; }
+    100% { opacity: 0; }
+  }
+
+  /* ── Status bar ── */
+  #status-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 0.55rem 1rem;
+    background: var(--surface);
+    border-top: 2px solid var(--border);
+    font-size: 0.73rem;
+    min-height: 2.8rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    z-index: 20;
+  }
+
+  #status-bar.ok      { border-top-color: var(--accent);  background: #0d1f0d; }
+  #status-bar.error   { border-top-color: var(--danger);  background: #1f0d0d; }
+  #status-bar.warn    { border-top-color: var(--warn);    background: #1f180d; }
+  #status-bar.loading { border-top-color: var(--accent2); }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--muted);
+  }
+  .ok .dot      { background: var(--accent); }
+  .error .dot   { background: var(--danger); }
+  .warn .dot    { background: var(--warn); }
+  .loading .dot { background: var(--accent2); }
+
+  #status-text { flex: 1; line-height: 1.4; }
+
+  .barcode-chip {
+    display: inline-block;
+    font-size: 0.62rem;
+    padding: 0.1rem 0.3rem;
+    background: var(--border);
+    border-radius: 3px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Start button ── */
+  .btn-start {
+    margin: 0.6rem auto;
+    display: block;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 6px;
+    padding: 0.6rem 2rem;
+    font-family: 'Syne', sans-serif;
+    font-weight: 700;
+    font-size: 0.9rem;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+
+  /* ── Category search dropdown ── */
+  #category-dropdown {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0; right: 0;
+    background: var(--surface);
+    border: 1px solid var(--accent2);
+    border-top: none;
+    border-radius: 0 0 5px 5px;
+    z-index: 100;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  .cat-option {
+    padding: 0.4rem 0.55rem;
+    font-size: 0.78rem;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    color: var(--text);
+  }
+
+  .cat-option:last-child { border-bottom: none; }
+  .cat-option:hover, .cat-option:active { background: var(--border); color: var(--accent); }
+
+  /* ── History ── */
+  #history {
+    padding: 0.55rem 1rem;
+    border-top: 1px solid var(--border);
+    max-height: 120px;
+    overflow-y: auto;
+  }
+
+  #history h2 {
+    font-size: 0.57rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 0.35rem;
+  }
+
+  .history-item {
+    font-size: 0.68rem;
+    color: var(--muted);
+    padding: 0.15rem 0;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0.5rem;
+    align-items: baseline;
+  }
+
+  .history-item .code     { color: var(--text); }
+  .history-item .tag-ok   { color: var(--accent); }
+  .history-item .tag-skip { color: var(--muted); }
+  .history-item .tag-err  { color: var(--danger); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OFF Scanner</h1>
+  <span>Open Food Facts contributor</span>
+</header>
+
+<div class="config">
+  <!-- Credentials (side by side) -->
+  <div class="config-row">
+    <div>
+      <label>OFF username</label>
+      <input type="text" id="off-user" placeholder="username" autocomplete="username">
+    </div>
+    <div>
+      <label>Password</label>
+      <input type="password" id="off-pass" placeholder="••••••" autocomplete="current-password">
+    </div>
+  </div>
+  <!-- Country & category (side by side) -->
+  <div class="config-row">
+    <div>
+      <label>Country</label>
+      <select id="country-select">
+        <option value="">— Country —</option>
+      </select>
+    </div>
+    <div style="position:relative">
+      <label>Category (optional)</label>
+      <input type="text" id="category-input" placeholder="Type to search…" autocomplete="off">
+      <div id="category-dropdown"></div>
+    </div>
+  </div>
+</div>
+
+<div class="scanner-wrap">
+  <div id="reader"></div>
+  <div id="flash"></div>
+  <div id="status-bar">
+    <div class="dot"></div>
+    <div id="status-text">Press Start to activate the camera.</div>
+  </div>
+</div>
+
+<button class="btn-start" id="btn-start">▶ Start</button>
+
+<div id="history">
+  <h2>History</h2>
+  <div id="history-list"></div>
+</div>
+
+<script>
+// ── API base URL ──────────────────────────────────────────────────────────────
+const OFF_API = 'https://world.openfoodfacts.org';
+
+// ── Countries (OFF tag → display label) ──────────────────────────────────────
+const COUNTRIES = [
+  ['en:argentina',        '🇦🇷 Argentina'],
+  ['en:australia',        '🇦🇺 Australia'],
+  ['en:austria',          '🇦🇹 Austria'],
+  ['en:belgium',          '🇧🇪 Belgium'],
+  ['en:brazil',           '🇧🇷 Brazil'],
+  ['en:canada',           '🇨🇦 Canada'],
+  ['en:china',            '🇨🇳 China'],
+  ['en:czech-republic',   '🇨🇿 Czech Republic'],
+  ['en:denmark',          '🇩🇰 Denmark'],
+  ['en:egypt',            '🇪🇬 Egypt'],
+  ['en:estonia',          '🇪🇪 Estonia'],
+  ['en:finland',          '🇫🇮 Finland'],
+  ['en:france',           '🇫🇷 France'],
+  ['en:germany',          '🇩🇪 Germany'],
+  ['en:greece',           '🇬🇷 Greece'],
+  ['en:hong-kong',        '🇭🇰 Hong Kong'],
+  ['en:hungary',          '🇭🇺 Hungary'],
+  ['en:india',            '🇮🇳 India'],
+  ['en:indonesia',        '🇮🇩 Indonesia'],
+  ['en:israel',           '🇮🇱 Israel'],
+  ['en:italy',            '🇮🇹 Italy'],
+  ['en:japan',            '🇯🇵 Japan'],
+  ['en:latvia',           '🇱🇻 Latvia'],
+  ['en:lithuania',        '🇱🇹 Lithuania'],
+  ['en:mexico',           '🇲🇽 Mexico'],
+  ['en:morocco',          '🇲🇦 Morocco'],
+  ['en:netherlands',      '🇳🇱 Netherlands'],
+  ['en:new-zealand',      '🇳🇿 New Zealand'],
+  ['en:norway',           '🇳🇴 Norway'],
+  ['en:poland',           '🇵🇱 Poland'],
+  ['en:portugal',         '🇵🇹 Portugal'],
+  ['en:romania',          '🇷🇴 Romania'],
+  ['en:russia',           '🇷🇺 Russia'],
+  ['en:singapore',        '🇸🇬 Singapore'],
+  ['en:south-africa',     '🇿🇦 South Africa'],
+  ['en:south-korea',      '🇰🇷 South Korea'],
+  ['en:spain',            '🇪🇸 Spain'],
+  ['en:sweden',           '🇸🇪 Sweden'],
+  ['en:switzerland',      '🇨🇭 Switzerland'],
+  ['en:thailand',         '🇹🇭 Thailand'],
+  ['en:turkey',           '🇹🇷 Turkey'],
+  ['en:united-kingdom',   '🇬🇧 United Kingdom'],
+  ['en:united-states',    '🇺🇸 United States'],
+];
+
+
+// ── DOM refs ──────────────────────────────────────────────────────────────────
+const countrySelect   = document.getElementById('country-select');
+const categoryInput   = document.getElementById('category-input');
+const categoryDropdown = document.getElementById('category-dropdown');
+const statusBar       = document.getElementById('status-bar');
+const statusText      = document.getElementById('status-text');
+const historyList     = document.getElementById('history-list');
+const btnStart        = document.getElementById('btn-start');
+const offUser         = document.getElementById('off-user');
+const offPass         = document.getElementById('off-pass');
+const flash           = document.getElementById('flash');
+
+// ── Populate country select ───────────────────────────────────────────────────
+COUNTRIES.forEach(([val, label]) => countrySelect.appendChild(new Option(label, val)));
+
+// ── Restore persisted values (password is intentionally never persisted) ──────
+countrySelect.value = localStorage.getItem('off_country') || '';
+offUser.value       = localStorage.getItem('off_user')    || '';
+
+// Restore persisted category: show saved label in input, store tag separately
+let selectedCategoryTag   = localStorage.getItem('off_category')       || '';
+let selectedCategoryLabel = localStorage.getItem('off_category_label') || '';
+if (selectedCategoryLabel) categoryInput.value = selectedCategoryLabel;
+
+countrySelect.addEventListener('change', () => localStorage.setItem('off_country', countrySelect.value));
+offUser.addEventListener('input',        () => localStorage.setItem('off_user',    offUser.value.trim()));
+
+// ── Category search-as-you-type ───────────────────────────────────────────────
+let categoryDebounceTimer = null;
+
+// Called when the user picks a suggestion
+function selectCategory(tag, label) {
+  selectedCategoryTag   = tag;
+  selectedCategoryLabel = label;
+  categoryInput.value   = label;
+  localStorage.setItem('off_category',       tag);
+  localStorage.setItem('off_category_label', label);
+  categoryDropdown.innerHTML = '';
+  categoryDropdown.style.display = 'none';
+}
+
+// Clear the selection if the user erases the field
+categoryInput.addEventListener('input', () => {
+  const q = categoryInput.value.trim();
+  if (!q) {
+    selectedCategoryTag   = '';
+    selectedCategoryLabel = '';
+    localStorage.removeItem('off_category');
+    localStorage.removeItem('off_category_label');
+  }
+  clearTimeout(categoryDebounceTimer);
+  if (!q) categoryDebounceTimer = null; // reset so next search is immediate
+  if (q.length < 4) {
+    categoryDropdown.innerHTML = '';
+    categoryDropdown.style.display = 'none';
+    return;
+  }
+  // First search fires immediately; subsequent searches are debounced to at most 1/s
+  if (categoryDebounceTimer === null) {
+    searchCategories(q);
+    categoryDebounceTimer = 0; // mark that at least one search has been fired
+  } else {
+    clearTimeout(categoryDebounceTimer);
+    categoryDebounceTimer = setTimeout(() => searchCategories(q), 1000);
+  }
+});
+
+// Hide dropdown when focus leaves both input and dropdown
+categoryInput.addEventListener('blur', () => {
+  setTimeout(() => { categoryDropdown.style.display = 'none'; }, 150);
+});
+
+async function searchCategories(query) {
+  try {
+    const url = `${OFF_API}/cgi/suggest.pl?tagtype=categories&term=${encodeURIComponent(query)}&lang=en`;
+    const res  = await fetch(url);
+    const data = await res.json();
+
+    categoryDropdown.innerHTML = '';
+    if (!data.length) {
+      categoryDropdown.style.display = 'none';
+      return;
+    }
+
+    // Each suggestion from the API is { id, name } or a plain string
+    data.slice(0, 15).forEach(item => {
+      const tag   = typeof item === 'string' ? item : (item.id   || item.value || item);
+      const label = typeof item === 'string' ? item : (item.name || item.label || item.value || item);
+      const opt   = document.createElement('div');
+      opt.className   = 'cat-option';
+      opt.textContent = label;
+      opt.addEventListener('mousedown', (e) => {
+        e.preventDefault(); // prevent blur before click registers
+        selectCategory(tag, label);
+      });
+      categoryDropdown.appendChild(opt);
+    });
+
+    categoryDropdown.style.display = 'block';
+  } catch (err) {
+    // Silently ignore search errors — non-critical
+  }
+}
+
+// ── Status helper ─────────────────────────────────────────────────────────────
+function setStatus(msg, type = '') {
+  statusBar.className = type;
+  statusText.innerHTML = msg;
+}
+
+// ── Flash the scanner area green to signal a successful scan ──────────────────
+function triggerFlash() {
+  flash.classList.remove('active');
+  // Force reflow so the animation restarts cleanly
+  void flash.offsetWidth;
+  flash.classList.add('active');
+}
+
+// ── Per-barcode cooldown to prevent duplicate submissions ─────────────────────
+let lastCode = null;
+let lastTime = 0;
+const COOLDOWN_MS = 4000;
+
+// ── Start continuous scanner on button click ──────────────────────────────────
+let scanner = null;
+
+btnStart.addEventListener('click', async () => {
+  if (!offUser.value.trim() || !offPass.value) {
+    setStatus('⚠ Enter your Open Food Facts username and password.', 'warn');
+    return;
+  }
+  if (!countrySelect.value) {
+    setStatus('⚠ Select a country before scanning.', 'warn');
+    return;
+  }
+
+  btnStart.disabled = true;
+  btnStart.textContent = '…';
+  scanner = new Html5Qrcode('reader');
+
+  try {
+    await scanner.start(
+      { facingMode: 'environment' },
+      {
+        fps: 10,
+        // qrbox as a function: the scan region is 85% of the viewfinder width
+        // and 35% of its height, so it covers wide barcodes end-to-end and
+        // stays truly centred in the live video frame.
+        qrbox: (viewfinderWidth, viewfinderHeight) => ({
+          width:  Math.round(viewfinderWidth  * 0.85),
+          height: Math.round(viewfinderHeight * 0.35),
+        }),
+      },
+      onScanSuccess,
+      () => {} // per-frame decode failures are expected and can be ignored
+    );
+    btnStart.style.display = 'none';
+    setStatus('Scanner active — point at a barcode.', 'loading');
+  } catch (err) {
+    setStatus('❌ Camera access denied: ' + err, 'error');
+    btnStart.disabled = false;
+    btnStart.textContent = '▶ Start';
+  }
+});
+
+// ── Handle a successful barcode decode ───────────────────────────────────────
+async function onScanSuccess(barcode) {
+  const now = Date.now();
+  if (barcode === lastCode && now - lastTime < COOLDOWN_MS) return;
+  lastCode = barcode;
+  lastTime = now;
+
+  const country  = countrySelect.value;
+  const category = selectedCategoryTag;
+
+  setStatus(`<span class="barcode-chip">${barcode}</span> — Fetching product…`, 'loading');
+
+  try {
+    // 1. Fetch current product data from OFF
+    const res  = await fetch(`${OFF_API}/api/v2/product/${barcode}.json`);
+    const data = await res.json();
+
+    if (data.status === 0) {
+      setStatus(`❌ <span class="barcode-chip">${barcode}</span> — Product not found in OFF.`, 'error');
+      addHistory(barcode, 'err', 'Not found');
+      return;
+    }
+
+    const p                  = data.product;
+    const existingCountries  = (p.countries_tags  || []).map(s => s.toLowerCase());
+    const existingCategories = (p.categories_tags || []).map(s => s.toLowerCase());
+
+    const needsCountry  = country  && !existingCountries.includes(country.toLowerCase());
+    const needsCategory = category && !existingCategories.includes(category.toLowerCase());
+
+    // Both fields already present — nothing to do
+    if (!needsCountry && !needsCategory) {
+      triggerFlash();
+      setStatus(`✔ <span class="barcode-chip">${barcode}</span> — Already up to date.`, 'ok');
+      addHistory(barcode, 'skip', p.product_name || '—');
+      return;
+    }
+
+    // 2. PATCH the product via the OFF write API
+    const body = new URLSearchParams();
+    body.append('code',     barcode);
+    body.append('user_id',  offUser.value.trim());
+    body.append('password', offPass.value);
+
+    if (needsCountry) {
+      const updated = [...new Set([...existingCountries, country.toLowerCase()])].join(',');
+      body.append('countries', updated);
+    }
+    if (needsCategory) {
+      const updated = [...new Set([...existingCategories, category.toLowerCase()])].join(',');
+      body.append('categories', updated);
+    }
+
+    const patchRes  = await fetch(`${OFF_API}/cgi/product_jqm2.pl`, { method: 'POST', body });
+    const patchData = await patchRes.json();
+
+    if (patchData.status === 1) {
+      const parts = [];
+      if (needsCountry)  parts.push('country ✓');
+      if (needsCategory) parts.push('category ✓');
+      triggerFlash();
+      setStatus(`✔ <span class="barcode-chip">${barcode}</span> — Updated: ${parts.join(', ')}`, 'ok');
+      addHistory(barcode, 'ok', (p.product_name || '—') + ' → ' + parts.join(', '));
+    } else {
+      setStatus(`❌ <span class="barcode-chip">${barcode}</span> — OFF API error.`, 'error');
+      addHistory(barcode, 'err', JSON.stringify(patchData));
+    }
+
+  } catch (err) {
+    setStatus(`❌ Network error: ${err.message}`, 'error');
+    addHistory(barcode, 'err', err.message);
+  }
+}
+
+// ── Prepend an entry to the visible scan history ──────────────────────────────
+function addHistory(code, status, label) {
+  const el       = document.createElement('div');
+  el.className   = 'history-item';
+  const tagClass = status === 'ok'   ? 'tag-ok'   : status === 'skip' ? 'tag-skip' : 'tag-err';
+  const tagLabel = status === 'ok'   ? '✔ upd'    : status === 'skip' ? '– skip'   : '✗ err';
+  el.innerHTML   = `<span class="code">${code}</span><span class="${tagClass}">${tagLabel}</span><span>${label}</span>`;
+  historyList.prepend(el);
+}
+</script>
+</body>
+</html>
